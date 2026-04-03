@@ -3,3 +3,4 @@ zig/zig-out/
 zig/zig-cache/
 zig/.zig-cache/
 Project.toml
+.worktrees/
