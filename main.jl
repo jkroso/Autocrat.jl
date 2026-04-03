@@ -3,7 +3,6 @@
 @use "github.com/jkroso/JSON.jl" parse_json
 @use Dates: Millisecond, Second, Period, value
 @use usecomputer_jll:libusecomputer_c as lib
-const eventlib = joinpath(@__DIR__, "zig/zig-out/lib/libautocrat_events.dylib")
 
 @Enum MouseButton left right middle
 
@@ -228,12 +227,27 @@ function _update_state(t::EventType, e::Event)
   end
 end
 
+# I can't get @cfunction to work as a callback in core graphics so for now we create an event queue
+# in C and just read directly from it
+const eventlib = let
+  src = joinpath(@__DIR__, "events.c")
+  lib = joinpath(@__DIR__, ".build", "libevents.dylib")
+  if !isfile(lib) || mtime(src) > mtime(lib)
+    mkpath(dirname(lib))
+    run(`cc -shared -O2 -framework CoreGraphics -framework ApplicationServices -framework CoreFoundation -o $lib $src`)
+  end
+  lib
+end
+
 function spy(cb)
   _spy_running[] = true
-  rc = @ccall eventlib.uc_events_start()::Cint
-  rc == 0 || throw(Error(unsafe_string(@ccall eventlib.uc_events_last_error()::Ptr{UInt8})))
-  ring_ptr = @ccall eventlib.uc_events_ring()::Ptr{Event}
-  count_ptr = @ccall eventlib.uc_events_count()::Ptr{Int64}
+  rc = @ccall eventlib.ac_start()::Cint
+  if rc != 0
+    _spy_running[] = false
+    throw(Error(rc == -2 ? "Accessibility permission required" : "failed to start event tap (rc=$rc)"))
+  end
+  ring_ptr = @ccall eventlib.ac_ring()::Ptr{Event}
+  count_ptr = @ccall eventlib.ac_count()::Ptr{Int64}
   @async begin
     read_pos = Int64(0)
     while _spy_running[]
@@ -252,7 +266,7 @@ end
 
 function spy_stop()
   _spy_running[] = false
-  @ccall eventlib.uc_events_stop()::Cint
+  @ccall eventlib.ac_stop()::Cvoid
 end
 
 "The Mouse"

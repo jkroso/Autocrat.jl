@@ -4,7 +4,7 @@ I always though computers couldn't control themselves. Turns out they lack only 
 
 ![this autocrat is a dicktator](./dictator.gif)
 
-This is mostly a thin wrapper around [usecomputer](https://github.com/remorses/usecomputer) and [libuiohook](https://github.com/kwhat/libuiohook). It provides `mouse` and `keyboard` objects that you can read and write to, along with a few helpful functions
+This is mostly a thin wrapper around [usecomputer](https://github.com/remorses/usecomputer). It provides `mouse` and `keyboard` objects that you can read and write to, along with a few helpful functions
 
 ## API
 
