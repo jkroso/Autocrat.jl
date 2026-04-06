@@ -1,4 +1,4 @@
-@use ".." move hold release click windows MouseButton
+@use ".." move click windows mouse MouseButton
 
 const canvas_html = """
 <!DOCTYPE html>
@@ -62,19 +62,11 @@ function find_canvas()
   for w in windows()
     occursin("Autocrat Canvas", w.title) && return w
   end
-  nothing
+  error("No canvas window found")
 end
 
 open_canvas()
-w = let w = nothing
-  for _ in 1:10
-    w = find_canvas()
-    w !== nothing && break
-    sleep(0.5)
-  end
-  w
-end
-w === nothing && error("No canvas window found")
+w = find_canvas()
 w.focused = true
 b = w.bounds
 cx = b.x + b.width / 2
