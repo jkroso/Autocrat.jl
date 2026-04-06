@@ -1,109 +1,91 @@
 @use "github.com/jkroso/Prospects.jl" @def @property Field ["BitSet" @BitSet] ["Enum" @Enum]
 @use "github.com/jkroso/Units.jl/Typography" px
-
-# AgentDesktop replaces usecomputer_jll
 @use "./AgentDesktop" => AD
 
-for name in [:Adapter, :AdError, :Direction, :Modifier, :MouseButton, :MouseEventKind,
-             :ScreenshotKind, :ImageFormat, :WindowOpKind, :ActionKind,
-             :Rect, :Point, :AppInfo, :WindowInfo, :SurfaceInfo, :Node, :NativeHandle,
-             :ElementState, :ActionResult, :Image,
-             :check_permissions, :list_apps, :launch, :close_app, :list_windows,
-             :focus, :resize, :move_to, :minimize, :maximize, :restore,
-             :get_tree, :list_surfaces, :resolve,
-             :double_click, :right_click, :triple_click, :set_focus, :expand, :collapse, :toggle,
-             :check, :uncheck, :scroll_to, :clear, :hover,
-             :set_value, :select, :type_text, :scroll,
-             :press_key, :key_down, :key_up,
-             :get_clipboard, :set_clipboard, :clear_clipboard,
-             :click, :drag, :screenshot]
-  @eval const $name = AD.$name
-end
-
-const _adapter = Ref{Adapter}()
+const _adapter = Ref{AD.Adapter}()
 function adapter()
   isassigned(_adapter) && return _adapter[]
-  a = Adapter()
-  check_permissions(a)
+  a = AD.Adapter()
+  AD.check_permissions(a)
   _adapter[] = a
 end
 
 # Click: coordinate-based convenience
-click(x::Real, y::Real; button::MouseButton=MouseButton.left, count::Integer=1) = begin
+click(x::Real, y::Real; button::AD.MouseButton=AD.MouseButton.left, count::Integer=1) = begin
   setfield!(mouse, :x, round(Int, x))
   setfield!(mouse, :y, round(Int, y))
-  AD.mouse(adapter(), MouseEventKind.click, x, y; button, clicks=count)
+  AD.mouse(adapter(), AD.MouseEventKind.click, x, y; button, clicks=count)
 end
 
 # Drag: coordinate-based convenience
 drag((to_x, to_y)::Tuple{Real,Real}; duration::Integer=0) = begin
-  from = Point(Float64(mouse.x), Float64(mouse.y))
+  from = AD.Point(Float64(mouse.x), Float64(mouse.y))
   setfield!(mouse, :x, round(Int, to_x))
   setfield!(mouse, :y, round(Int, to_y))
-  drag(adapter(), from, Point(Float64(to_x), Float64(to_y)); duration)
+  AD.drag(adapter(), from, AD.Point(Float64(to_x), Float64(to_y)); duration)
 end
 
 # Screenshot: convenience shortcuts
-screenshot() = screenshot(adapter())
-screenshot(w::WindowInfo) = screenshot(adapter(), w)
-screenshot(screen_index::Integer) = screenshot(adapter(), screen_index)
+screenshot() = AD.screenshot(adapter())
+screenshot(w::AD.WindowInfo) = AD.screenshot(adapter(), w)
+screenshot(screen_index::Integer) = AD.screenshot(adapter(), screen_index)
 
 # Coordinate-based mouse convenience
 move(x::Real, y::Real) = begin
   setfield!(mouse, :x, round(Int, x))
   setfield!(mouse, :y, round(Int, y))
-  AD.mouse(adapter(), MouseEventKind.move, x, y)
+  AD.mouse(adapter(), AD.MouseEventKind.move, x, y)
 end
 
-hold(button::MouseButton=MouseButton.left) =
-  AD.mouse(adapter(), MouseEventKind.down, mouse.x, mouse.y; button)
+hold(button::AD.MouseButton=AD.MouseButton.left) =
+  AD.mouse(adapter(), AD.MouseEventKind.down, mouse.x, mouse.y; button)
 
-release(button::MouseButton=MouseButton.left) =
-  AD.mouse(adapter(), MouseEventKind.up, mouse.x, mouse.y; button)
+release(button::AD.MouseButton=AD.MouseButton.left) =
+  AD.mouse(adapter(), AD.MouseEventKind.up, mouse.x, mouse.y; button)
 
 # No-adapter convenience
-windows(; kw...) = list_windows(adapter(); kw...)
-list_apps() = list_apps(adapter())
-launch(id::String; kw...) = launch(adapter(), id; kw...)
-close_app(id::String; kw...) = close_app(adapter(), id; kw...)
-focus(w::WindowInfo) = focus(adapter(), w)
-resize(w::WindowInfo, width, height) = resize(adapter(), w, width, height)
-move_to(w::WindowInfo, x, y) = move_to(adapter(), w, x, y)
-minimize(w::WindowInfo) = minimize(adapter(), w)
-maximize(w::WindowInfo) = maximize(adapter(), w)
-restore(w::WindowInfo) = restore(adapter(), w)
-get_tree(w::WindowInfo; kw...) = get_tree(adapter(), w; kw...)
+windows(; kw...) = AD.list_windows(adapter(); kw...)
+list_apps() = AD.list_apps(adapter())
+launch(id::String; kw...) = AD.launch(adapter(), id; kw...)
+close_app(id::String; kw...) = AD.close_app(adapter(), id; kw...)
+focus(w::AD.WindowInfo) = AD.focus(adapter(), w)
+resize(w::AD.WindowInfo, width, height) = AD.resize(adapter(), w, width, height)
+move_to(w::AD.WindowInfo, x, y) = AD.move_to(adapter(), w, x, y)
+minimize(w::AD.WindowInfo) = AD.minimize(adapter(), w)
+maximize(w::AD.WindowInfo) = AD.maximize(adapter(), w)
+restore(w::AD.WindowInfo) = AD.restore(adapter(), w)
+get_tree(w::AD.WindowInfo; kw...) = AD.get_tree(adapter(), w; kw...)
 
-@property WindowInfo.bounds = let b = getfield(self, :bounds)
+Base.getproperty(self::AD.WindowInfo, ::Field{:bounds}) = let b = getfield(self, :bounds)
   b !== nothing ? b : get_tree(self, max_depth=1, include_bounds=true).bounds
 end
 
-Base.setproperty!(w::WindowInfo, ::Field{:focused}, v::Bool) = v && focus(w)
-list_surfaces(pid::Integer) = list_surfaces(adapter(), pid)
-resolve(; kw...) = resolve(adapter(); kw...)
-click(h::NativeHandle) = click(adapter(), h)
-double_click(h::NativeHandle) = double_click(adapter(), h)
-right_click(h::NativeHandle) = right_click(adapter(), h)
-triple_click(h::NativeHandle) = triple_click(adapter(), h)
-set_focus(h::NativeHandle) = set_focus(adapter(), h)
-expand(h::NativeHandle) = expand(adapter(), h)
-collapse(h::NativeHandle) = collapse(adapter(), h)
-toggle(h::NativeHandle) = toggle(adapter(), h)
-check(h::NativeHandle) = check(adapter(), h)
-uncheck(h::NativeHandle) = uncheck(adapter(), h)
-scroll_to(h::NativeHandle) = scroll_to(adapter(), h)
-clear(h::NativeHandle) = clear(adapter(), h)
-hover(h::NativeHandle) = hover(adapter(), h)
-set_value(h::NativeHandle, text::String) = set_value(adapter(), h, text)
-select(h::NativeHandle, text::String) = select(adapter(), h, text)
-type_text(h::NativeHandle, text::String) = type_text(adapter(), h, text)
-scroll(h::NativeHandle, direction::Direction, amount::Integer=3) = scroll(adapter(), h, direction, amount)
-press_key(h::NativeHandle, key::String; kw...) = press_key(adapter(), h, key; kw...)
-key_down(h::NativeHandle, key::String; kw...) = key_down(adapter(), h, key; kw...)
-key_up(h::NativeHandle, key::String; kw...) = key_up(adapter(), h, key; kw...)
-get_clipboard() = get_clipboard(adapter())
-set_clipboard(text::String) = set_clipboard(adapter(), text)
-clear_clipboard() = clear_clipboard(adapter())
+Base.setproperty!(w::AD.WindowInfo, ::Field{:focused}, v::Bool) = v && focus(w)
+list_surfaces(pid::Integer) = AD.list_surfaces(adapter(), pid)
+resolve(; kw...) = AD.resolve(adapter(); kw...)
+click(h::AD.NativeHandle) = AD.click(adapter(), h)
+double_click(h::AD.NativeHandle) = AD.double_click(adapter(), h)
+right_click(h::AD.NativeHandle) = AD.right_click(adapter(), h)
+triple_click(h::AD.NativeHandle) = AD.triple_click(adapter(), h)
+set_focus(h::AD.NativeHandle) = AD.set_focus(adapter(), h)
+expand(h::AD.NativeHandle) = AD.expand(adapter(), h)
+collapse(h::AD.NativeHandle) = AD.collapse(adapter(), h)
+toggle(h::AD.NativeHandle) = AD.toggle(adapter(), h)
+check(h::AD.NativeHandle) = AD.check(adapter(), h)
+uncheck(h::AD.NativeHandle) = AD.uncheck(adapter(), h)
+scroll_to(h::AD.NativeHandle) = AD.scroll_to(adapter(), h)
+clear(h::AD.NativeHandle) = AD.clear(adapter(), h)
+hover(h::AD.NativeHandle) = AD.hover(adapter(), h)
+set_value(h::AD.NativeHandle, text::String) = AD.set_value(adapter(), h, text)
+select(h::AD.NativeHandle, text::String) = AD.select(adapter(), h, text)
+type_text(h::AD.NativeHandle, text::String) = AD.type_text(adapter(), h, text)
+scroll(h::AD.NativeHandle, direction::AD.Direction, amount::Integer=3) = AD.scroll(adapter(), h, direction, amount)
+press_key(h::AD.NativeHandle, key::String; kw...) = AD.press_key(adapter(), h, key; kw...)
+key_down(h::AD.NativeHandle, key::String; kw...) = AD.key_down(adapter(), h, key; kw...)
+key_up(h::AD.NativeHandle, key::String; kw...) = AD.key_up(adapter(), h, key; kw...)
+get_clipboard() = AD.get_clipboard(adapter())
+set_clipboard(text::String) = AD.set_clipboard(adapter(), text)
+clear_clipboard() = AD.clear_clipboard(adapter())
 
 """
 A very efficient way of representing every possible keyboard button combination. To test for cmd+c you write `key_state == Keys.cmd|Keys.c`
@@ -139,7 +121,7 @@ Base.setproperty!(m::Mouse, ::Field{:position}, (x, y)) = begin
 end
 
 Base.setproperty!(m::Mouse, ::Field{f}, down::Bool) where f = begin
-  button = getproperty(MouseButton, f)
+  button = getproperty(AD.MouseButton, f)
   bit = getproperty(MouseState, f)
   if down
     hold(button)
@@ -265,7 +247,7 @@ function screens()
   ccall((:CGGetActiveDisplayList, CG), UInt32, (UInt32, Ptr{UInt32}, Ptr{UInt32}), UInt32(0), C_NULL, count)
   ids = Vector{UInt32}(undef, count[])
   ccall((:CGGetActiveDisplayList, CG), UInt32, (UInt32, Ptr{UInt32}, Ptr{UInt32}), count[], ids, count)
-  [let r = ccall((:CGDisplayBounds, CG), Rect, (UInt32,), id)
+  [let r = ccall((:CGDisplayBounds, CG), AD.Rect, (UInt32,), id)
      Screen(index=i-1, x=r.x, y=r.y, width=r.width, height=r.height)
    end for (i, id) in enumerate(ids)]
 end
@@ -318,7 +300,7 @@ function spy(cb)
   rc = @ccall eventlib.ac_start()::Cint
   if rc != 0
     _spy_running[] = false
-    throw(AdError(Int32(rc), rc == -2 ? "Accessibility permission required" : "failed to start event tap (rc=$rc)", "", ""))
+    throw(AD.AdError(Int32(rc), rc == -2 ? "Accessibility permission required" : "failed to start event tap (rc=$rc)", "", ""))
   end
   ring_ptr = @ccall eventlib.ac_ring()::Ptr{Event}
   count_ptr = @ccall eventlib.ac_count()::Ptr{Int64}

@@ -1,28 +1,28 @@
-@use "." Adapter adapter AdError Direction MouseButton WindowInfo check_permissions list_windows screenshot windows
+@use "." AD adapter windows screenshot
 @use Test...
 
 @testset "Autocrat" begin
   @testset "Direction" begin
-    @test Direction.up isa Direction
-    @test Direction.down isa Direction
-    @test Direction.left isa Direction
-    @test Direction.right isa Direction
-    @test nameof(Direction.up) == :up
+    @test AD.Direction.up isa AD.Direction
+    @test AD.Direction.down isa AD.Direction
+    @test AD.Direction.left isa AD.Direction
+    @test AD.Direction.right isa AD.Direction
+    @test nameof(AD.Direction.up) == :up
   end
 
   @testset "MouseButton" begin
-    @test MouseButton.left isa MouseButton
-    @test MouseButton.right isa MouseButton
-    @test MouseButton.middle isa MouseButton
+    @test AD.MouseButton.left isa AD.MouseButton
+    @test AD.MouseButton.right isa AD.MouseButton
+    @test AD.MouseButton.middle isa AD.MouseButton
   end
 
   @testset "adapter" begin
-    @test adapter() isa Adapter
+    @test adapter() isa AD.Adapter
   end
 
   @testset "windows" begin
     ws = windows()
-    @test ws isa Vector{WindowInfo}
+    @test ws isa Vector{AD.WindowInfo}
     @test length(ws) > 0
     w = first(ws)
     @test w.app isa String
