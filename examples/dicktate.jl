@@ -1,4 +1,4 @@
-@use ".." move hold release click windows adapter focus get_tree MouseButton
+@use ".." move hold release click windows MouseButton
 
 const canvas_html = """
 <!DOCTYPE html>
@@ -30,12 +30,12 @@ end
 function stroke(points)
   move(points[1]...)
   sleep(0.05)
-  hold(MouseButton.left)
+  mouse.left = true
   for (x, y) in points[2:end]
     move(x, y)
     sleep(0.01)
   end
-  release(MouseButton.left)
+  mouse.left = false
   sleep(0.05)
 end
 
@@ -75,8 +75,8 @@ w = let w = nothing
   w
 end
 w === nothing && error("No canvas window found")
-focus(adapter(), w)
-b = get_tree(adapter(), w, max_depth=1, include_bounds=true).bounds
+w.focused = true
+b = w.bounds
 cx = b.x + b.width / 2
 cy = b.y + b.height / 2
 click(cx, cy)

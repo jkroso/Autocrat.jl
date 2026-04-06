@@ -66,7 +66,48 @@ release(button::MouseButton=MouseButton.left) =
   AD.mouse(adapter(), MouseEventKind.up, mouse.x, mouse.y; button)
 
 # No-adapter convenience
-windows() = list_windows(adapter())
+windows(; kw...) = list_windows(adapter(); kw...)
+list_apps() = list_apps(adapter())
+launch(id::String; kw...) = launch(adapter(), id; kw...)
+close_app(id::String; kw...) = close_app(adapter(), id; kw...)
+focus(w::WindowInfo) = focus(adapter(), w)
+resize(w::WindowInfo, width, height) = resize(adapter(), w, width, height)
+move_to(w::WindowInfo, x, y) = move_to(adapter(), w, x, y)
+minimize(w::WindowInfo) = minimize(adapter(), w)
+maximize(w::WindowInfo) = maximize(adapter(), w)
+restore(w::WindowInfo) = restore(adapter(), w)
+get_tree(w::WindowInfo; kw...) = get_tree(adapter(), w; kw...)
+
+@property WindowInfo.bounds = let b = getfield(self, :bounds)
+  b !== nothing ? b : get_tree(self, max_depth=1, include_bounds=true).bounds
+end
+
+Base.setproperty!(w::WindowInfo, ::Field{:focused}, v::Bool) = v && focus(w)
+list_surfaces(pid::Integer) = list_surfaces(adapter(), pid)
+resolve(; kw...) = resolve(adapter(); kw...)
+click(h::NativeHandle) = AD.click(adapter(), h)
+double_click(h::NativeHandle) = double_click(adapter(), h)
+right_click(h::NativeHandle) = right_click(adapter(), h)
+triple_click(h::NativeHandle) = triple_click(adapter(), h)
+set_focus(h::NativeHandle) = set_focus(adapter(), h)
+expand(h::NativeHandle) = expand(adapter(), h)
+collapse(h::NativeHandle) = collapse(adapter(), h)
+toggle(h::NativeHandle) = toggle(adapter(), h)
+check(h::NativeHandle) = check(adapter(), h)
+uncheck(h::NativeHandle) = uncheck(adapter(), h)
+scroll_to(h::NativeHandle) = scroll_to(adapter(), h)
+clear(h::NativeHandle) = clear(adapter(), h)
+hover(h::NativeHandle) = hover(adapter(), h)
+set_value(h::NativeHandle, text::String) = set_value(adapter(), h, text)
+select(h::NativeHandle, text::String) = select(adapter(), h, text)
+type_text(h::NativeHandle, text::String) = type_text(adapter(), h, text)
+scroll(h::NativeHandle, direction::Direction, amount::Integer=3) = scroll(adapter(), h, direction, amount)
+press_key(h::NativeHandle, key::String; kw...) = press_key(adapter(), h, key; kw...)
+key_down(h::NativeHandle, key::String; kw...) = key_down(adapter(), h, key; kw...)
+key_up(h::NativeHandle, key::String; kw...) = key_up(adapter(), h, key; kw...)
+get_clipboard() = get_clipboard(adapter())
+set_clipboard(text::String) = set_clipboard(adapter(), text)
+clear_clipboard() = clear_clipboard(adapter())
 
 """
 A very efficient way of representing every possible keyboard button combination. To test for cmd+c you write `key_state == Keys.cmd|Keys.c`
@@ -101,12 +142,28 @@ Base.setproperty!(m::Mouse, ::Field{:position}, (x, y)) = begin
   move(m.x, m.y)
 end
 
-Base.setproperty!(::Mouse, ::Field{f}, down::Bool) where f = begin
+Base.setproperty!(m::Mouse, ::Field{f}, down::Bool) where f = begin
   button = getproperty(MouseButton, f)
+  bit = getproperty(MouseState, f)
   if down
     hold(button)
+    setfield!(m, :buttons, getfield(m, :buttons) | bit)
   else
     release(button)
+    setfield!(m, :buttons, setdiff(getfield(m, :buttons), bit))
+  end
+  down
+end
+
+Base.setproperty!(kb::Keyboard, ::Field{f}, down::Bool) where f = begin
+  key = getproperty(Keys, f)
+  code = get(KEYCODE, key, nothing)
+  code === nothing && error("no keycode for key: $f")
+  keyevent(code, down)
+  if down
+    setfield!(kb, :state, getfield(kb, :state) | key)
+  else
+    setfield!(kb, :state, setdiff(getfield(kb, :state), key))
   end
   down
 end
@@ -171,6 +228,51 @@ const MODFLAGS = Dict{Cint,Cuint}(
   57=>0x10000,                # caps lock
   63=>0x800000,               # fn
 )
+
+# Reverse mapping: Keys -> macOS virtual keycode (first match wins for duplicates)
+const KEYCODE = let d = Dict{Keys,Cint}()
+  for (code, key) in KEYMAP
+    haskey(d, key) || (d[key] = code)
+  end
+  d
+end
+
+const CG = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+const CF = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
+
+function keyevent(keycode::Cint, down::Bool)
+  src = ccall((:CGEventSourceCreate, CG), Ptr{Nothing}, (Cint,), Cint(1)) # kCGEventSourceStateHIDSystemState
+  src == C_NULL && error("failed to create CGEventSource")
+  evt = ccall((:CGEventCreateKeyboardEvent, CG), Ptr{Nothing},
+              (Ptr{Nothing}, UInt16, Bool), src, UInt16(keycode), down)
+  evt == C_NULL && (ccall((:CFRelease, CF), Cvoid, (Ptr{Nothing},), src); error("failed to create key event"))
+  ccall((:CGEventPost, CG), Cvoid, (Cint, Ptr{Nothing}), Cint(0), evt) # kCGHIDEventTap
+  ccall((:CFRelease, CF), Cvoid, (Ptr{Nothing},), evt)
+  ccall((:CFRelease, CF), Cvoid, (Ptr{Nothing},), src)
+end
+
+@def struct Screen
+  index::Int
+  x::Float64
+  y::Float64
+  width::Float64
+  height::Float64
+end
+
+@property Screen.image = screenshot(self.index)
+@property Screen.windows = let sx=self.x, sw=self.width
+  [w for w in windows() if let b = w.bounds; b !== nothing && b.x >= sx && b.x < sx + sw end]
+end
+
+function screens()
+  count = Ref{UInt32}(0)
+  ccall((:CGGetActiveDisplayList, CG), UInt32, (UInt32, Ptr{UInt32}, Ptr{UInt32}), UInt32(0), C_NULL, count)
+  ids = Vector{UInt32}(undef, count[])
+  ccall((:CGGetActiveDisplayList, CG), UInt32, (UInt32, Ptr{UInt32}, Ptr{UInt32}), count[], ids, count)
+  [let r = ccall((:CGDisplayBounds, CG), Rect, (UInt32,), id)
+     Screen(index=i-1, x=r.x, y=r.y, width=r.width, height=r.height)
+   end for (i, id) in enumerate(ids)]
+end
 
 const BUTTONMAP = (MouseState.left, MouseState.right, MouseState.middle)
 
@@ -249,3 +351,5 @@ end
 const mouse = Mouse(0, 0, MouseState(0))
 "The Keyboard"
 const keyboard = Keyboard(Keys(0))
+"The Screen"
+const screen = first(screens())
