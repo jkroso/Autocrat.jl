@@ -2,7 +2,7 @@
 @use "github.com/jkroso/Units.jl/Typography" px
 
 # AgentDesktop replaces usecomputer_jll
-@use "../../AgentDesktop.jl" => AD
+@use "./AgentDesktop" => AD
 
 for name in [:Adapter, :AdError, :Direction, :Modifier, :MouseButton, :MouseEventKind,
              :ScreenshotKind, :ImageFormat, :WindowOpKind, :ActionKind,
