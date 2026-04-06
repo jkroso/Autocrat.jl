@@ -15,7 +15,8 @@ for name in [:Adapter, :AdError, :Direction, :Modifier, :MouseButton, :MouseEven
              :check, :uncheck, :scroll_to, :clear, :hover,
              :set_value, :select, :type_text, :scroll,
              :press_key, :key_down, :key_up,
-             :get_clipboard, :set_clipboard, :clear_clipboard]
+             :get_clipboard, :set_clipboard, :clear_clipboard,
+             :click, :drag, :screenshot]
   @eval const $name = AD.$name
 end
 
@@ -27,30 +28,25 @@ function adapter()
   _adapter[] = a
 end
 
-# Click: element-based + coordinate-based
-click(a::Adapter, h::NativeHandle) = AD.click(a, h)
+# Click: coordinate-based convenience
 click(x::Real, y::Real; button::MouseButton=MouseButton.left, count::Integer=1) = begin
   setfield!(mouse, :x, round(Int, x))
   setfield!(mouse, :y, round(Int, y))
   AD.mouse(adapter(), MouseEventKind.click, x, y; button, clicks=count)
 end
 
-# Drag: adapter-based + coordinate-based
-drag(a::Adapter, from::Point, to::Point; duration::Integer=0) = AD.drag(a, from, to; duration)
+# Drag: coordinate-based convenience
 drag((to_x, to_y)::Tuple{Real,Real}; duration::Integer=0) = begin
   from = Point(Float64(mouse.x), Float64(mouse.y))
   setfield!(mouse, :x, round(Int, to_x))
   setfield!(mouse, :y, round(Int, to_y))
-  AD.drag(adapter(), from, Point(Float64(to_x), Float64(to_y)); duration)
+  drag(adapter(), from, Point(Float64(to_x), Float64(to_y)); duration)
 end
 
-# Screenshot: adapter-based + convenience shortcuts
-screenshot(a::Adapter) = AD.screenshot(a)
-screenshot(a::Adapter, screen_index::Integer) = AD.screenshot(a, screen_index)
-screenshot(a::Adapter, w::WindowInfo) = AD.screenshot(a, w)
-screenshot() = AD.screenshot(adapter())
-screenshot(w::WindowInfo) = AD.screenshot(adapter(), w)
-screenshot(screen_index::Integer) = AD.screenshot(adapter(), screen_index)
+# Screenshot: convenience shortcuts
+screenshot() = screenshot(adapter())
+screenshot(w::WindowInfo) = screenshot(adapter(), w)
+screenshot(screen_index::Integer) = screenshot(adapter(), screen_index)
 
 # Coordinate-based mouse convenience
 move(x::Real, y::Real) = begin
@@ -85,7 +81,7 @@ end
 Base.setproperty!(w::WindowInfo, ::Field{:focused}, v::Bool) = v && focus(w)
 list_surfaces(pid::Integer) = list_surfaces(adapter(), pid)
 resolve(; kw...) = resolve(adapter(); kw...)
-click(h::NativeHandle) = AD.click(adapter(), h)
+click(h::NativeHandle) = click(adapter(), h)
 double_click(h::NativeHandle) = double_click(adapter(), h)
 right_click(h::NativeHandle) = right_click(adapter(), h)
 triple_click(h::NativeHandle) = triple_click(adapter(), h)
