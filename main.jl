@@ -1,85 +1,72 @@
 @use "github.com/jkroso/Prospects.jl" @def @property Field ["BitSet" @BitSet] ["Enum" @Enum]
 @use "github.com/jkroso/Units.jl/Typography" px
-@use "github.com/jkroso/JSON.jl" parse_json
-@use Dates: Millisecond, Second, Period, value
-@use usecomputer_jll:libusecomputer_c as lib
 
-@Enum MouseButton left right middle
+# AgentDesktop replaces usecomputer_jll
+@use "../../AgentDesktop.jl" => AD
 
-struct Error <: Exception
-  msg::String
-end
-Base.showerror(io::IO, e::Error) = print(io, "AutocratError: ", e.msg)
-
-function lasterror()
-  ptr = @ccall lib.uc_last_error()::Ptr{UInt8}
-  ptr == C_NULL ? "unknown error" : unsafe_string(ptr)
-end
-
-check(rc::Cint) = rc == 0 || throw(Error(lasterror()))
-ms(::Nothing) = Cint(-1)
-ms(d::Period) = Cint(value(Millisecond(d)))
-
-function click(x::Real, y::Real; button::MouseButton=MouseButton.left, count::Integer=1)
-  check(@ccall lib.uc_click(Cdouble(x)::Cdouble, Cdouble(y)::Cdouble,
-                             Cint(Integer(button) - 1)::Cint, Cint(count)::Cint)::Cint)
+for name in [:Adapter, :AdError, :Direction, :Modifier, :MouseButton, :MouseEventKind,
+             :ScreenshotKind, :ImageFormat, :WindowOpKind, :ActionKind,
+             :Rect, :Point, :AppInfo, :WindowInfo, :SurfaceInfo, :Node, :NativeHandle,
+             :ElementState, :ActionResult, :Image,
+             :check_permissions, :list_apps, :launch, :close_app, :list_windows,
+             :focus, :resize, :move_to, :minimize, :maximize, :restore,
+             :get_tree, :list_surfaces, :resolve,
+             :double_click, :right_click, :triple_click, :set_focus, :expand, :collapse, :toggle,
+             :check, :uncheck, :scroll_to, :clear, :hover,
+             :set_value, :select, :type_text, :scroll,
+             :press_key, :key_down, :key_up,
+             :get_clipboard, :set_clipboard, :clear_clipboard]
+  @eval const $name = AD.$name
 end
 
-move(x::Real, y::Real) = check(@ccall lib.uc_mouse_move(Cdouble(x)::Cdouble, Cdouble(y)::Cdouble)::Cint)
-hold(button::MouseButton=MouseButton.left) = check(@ccall lib.uc_mouse_down(Cint(Integer(button) - 1)::Cint)::Cint)
-release(button::MouseButton=MouseButton.left) = check(@ccall lib.uc_mouse_up(Cint(Integer(button) - 1)::Cint)::Cint)
-
-function position()
-  x = Ref{Cdouble}(0.0)
-  y = Ref{Cdouble}(0.0)
-  check(@ccall lib.uc_mouse_position(x::Ptr{Cdouble}, y::Ptr{Cdouble})::Cint)
-  (x[], y[])
+const _adapter = Ref{Adapter}()
+function adapter()
+  isassigned(_adapter) && return _adapter[]
+  a = Adapter()
+  check_permissions(a)
+  _adapter[] = a
 end
 
-function drag((to_x, to_y)::Tuple{Real,Real}; cp::Union{Tuple{Real,Real},Nothing}=nothing, 
-                                              button::MouseButton=MouseButton.left)
-  check(@ccall lib.uc_drag(
-    Cdouble(mouse.x)::Cdouble, Cdouble(mouse.y)::Cdouble,
-    Cdouble(to_x)::Cdouble, Cdouble(to_y)::Cdouble,
-    Cdouble(cp !== nothing ? cp[1] : 0)::Cdouble,
-    Cdouble(cp !== nothing ? cp[2] : 0)::Cdouble,
-    Cint(cp !== nothing)::Cint, Cint(Integer(button) - 1)::Cint)::Cint)
+# Click: element-based + coordinate-based
+click(a::Adapter, h::NativeHandle) = AD.click(a, h)
+click(x::Real, y::Real; button::MouseButton=MouseButton.left, count::Integer=1) = begin
+  setfield!(mouse, :x, round(Int, x))
+  setfield!(mouse, :y, round(Int, y))
+  AD.mouse(adapter(), MouseEventKind.click, x, y; button, clicks=count)
 end
 
-type(text::AbstractString; delay::Union{Period,Nothing}=nothing) =
-  check(@ccall lib.uc_type_text(text::Cstring, ms(delay)::Cint)::Cint)
-
-press(key::AbstractString; count::Integer=1, delay::Union{Period,Nothing}=nothing) =
-  check(@ccall lib.uc_press(key::Cstring, Cint(count)::Cint, ms(delay)::Cint)::Cint)
-
-@Enum Direction up down left right
-
-function scroll(direction::Direction; amount::Integer=3, at::Union{Tuple{Real,Real},Nothing}=nothing)
-  check(@ccall lib.uc_scroll(
-    String(nameof(direction))::Cstring, Cint(amount)::Cint,
-    Cdouble(at !== nothing ? at[1] : 0)::Cdouble,
-    Cdouble(at !== nothing ? at[2] : 0)::Cdouble,
-    Cint(at !== nothing)::Cint)::Cint)
+# Drag: adapter-based + coordinate-based
+drag(a::Adapter, from::Point, to::Point; duration::Integer=0) = AD.drag(a, from, to; duration)
+drag((to_x, to_y)::Tuple{Real,Real}; duration::Integer=0) = begin
+  from = Point(Float64(mouse.x), Float64(mouse.y))
+  setfield!(mouse, :x, round(Int, to_x))
+  setfield!(mouse, :y, round(Int, to_y))
+  AD.drag(adapter(), from, Point(Float64(to_x), Float64(to_y)); duration)
 end
 
-function readjson(ptr::Ptr{UInt8})
-  ptr == C_NULL && throw(Error(lasterror()))
-  result = parse_json(unsafe_string(ptr))
-  @ccall lib.uc_free(ptr::Ptr{UInt8})::Cvoid
-  result
+# Screenshot: adapter-based + convenience shortcuts
+screenshot(a::Adapter) = AD.screenshot(a)
+screenshot(a::Adapter, screen_index::Integer) = AD.screenshot(a, screen_index)
+screenshot(a::Adapter, w::WindowInfo) = AD.screenshot(a, w)
+screenshot() = AD.screenshot(adapter())
+screenshot(w::WindowInfo) = AD.screenshot(adapter(), w)
+screenshot(screen_index::Integer) = AD.screenshot(adapter(), screen_index)
+
+# Coordinate-based mouse convenience
+move(x::Real, y::Real) = begin
+  setfield!(mouse, :x, round(Int, x))
+  setfield!(mouse, :y, round(Int, y))
+  AD.mouse(adapter(), MouseEventKind.move, x, y)
 end
 
-function screenshot(; path::Union{AbstractString,Nothing}=nothing,
-                      display::Union{Integer,Nothing}=nothing,
-                      window::Union{Integer,Nothing}=nothing)
-  readjson(@ccall lib.uc_screenshot(
-    (path === nothing ? C_NULL : path)::Cstring,
-    Cint(something(display, -1))::Cint,
-    Cint(something(window, -1))::Cint)::Ptr{UInt8})
-end
+hold(button::MouseButton=MouseButton.left) =
+  AD.mouse(adapter(), MouseEventKind.down, mouse.x, mouse.y; button)
 
-displays() = readjson(@ccall lib.uc_display_list()::Ptr{UInt8})
-windows() = readjson(@ccall lib.uc_window_list()::Ptr{UInt8})
+release(button::MouseButton=MouseButton.left) =
+  AD.mouse(adapter(), MouseEventKind.up, mouse.x, mouse.y; button)
+
+# No-adapter convenience
+windows() = list_windows(adapter())
 
 """
 A very efficient way of representing every possible keyboard button combination. To test for cmd+c you write `key_state == Keys.cmd|Keys.c`
@@ -108,8 +95,6 @@ end
   state::Keys
 end
 
-press(key::Keys; kwargs...) = press(join(map(nameof, key), "+"); kwargs...)
-
 Base.setproperty!(m::Mouse, ::Field{:position}, (x, y)) = begin
   m.x = int(x)
   m.y = int(y)
@@ -125,13 +110,6 @@ Base.setproperty!(::Mouse, ::Field{f}, down::Bool) where f = begin
   end
   down
 end
-
-Base.setproperty!(kb::Keyboard, ::Field{:state}, newstate::Keys) = begin
-  topress = newstate - kb.state
-  press(topress)
-end
-
-Base.setproperty!(::Keyboard, ::Field{f}, v::Bool) where f = v && press(string(f))
 
 @Enum EventType mouse_move mouse_down mouse_up scroll key_down key_up flags_changed
 
@@ -150,7 +128,7 @@ end
 
 EventType(e::Event) = EventType(e.type + 1)
 
-# macOS virtual keycode → Keys mapping
+# macOS virtual keycode -> Keys mapping
 const KEYMAP = Dict{Cint,Keys}(
   # letters
   0=>Keys.a, 11=>Keys.b, 8=>Keys.c, 2=>Keys.d, 14=>Keys.e, 3=>Keys.f, 5=>Keys.g,
@@ -184,7 +162,7 @@ const KEYMAP = Dict{Cint,Keys}(
   87=>Keys.num5, 88=>Keys.num6, 89=>Keys.num7, 91=>Keys.num8, 92=>Keys.num9,
 )
 
-# macOS modifier keycode → CGEventFlags bit
+# macOS modifier keycode -> CGEventFlags bit
 const MODFLAGS = Dict{Cint,Cuint}(
   56=>0x20000, 60=>0x20000,   # shift
   59=>0x40000, 62=>0x40000,   # control
@@ -227,8 +205,6 @@ function _update_state(t::EventType, e::Event)
   end
 end
 
-# I can't get @cfunction to work as a callback in core graphics so for now we create an event queue
-# in C and just read directly from it
 const eventlib = let
   src = joinpath(@__DIR__, "events.c")
   lib = joinpath(@__DIR__, ".build", "libevents.dylib")
@@ -244,7 +220,7 @@ function spy(cb)
   rc = @ccall eventlib.ac_start()::Cint
   if rc != 0
     _spy_running[] = false
-    throw(Error(rc == -2 ? "Accessibility permission required" : "failed to start event tap (rc=$rc)"))
+    throw(AdError(Int32(rc), rc == -2 ? "Accessibility permission required" : "failed to start event tap (rc=$rc)", "", ""))
   end
   ring_ptr = @ccall eventlib.ac_ring()::Ptr{Event}
   count_ptr = @ccall eventlib.ac_count()::Ptr{Int64}
@@ -252,7 +228,7 @@ function spy(cb)
     read_pos = Int64(0)
     while _spy_running[]
       n = unsafe_load(count_ptr)
-      while read_pos < n # process the whole queue
+      while read_pos < n
         read_pos += 1
         e = unsafe_load(ring_ptr, mod1(read_pos, 1024))
         t = EventType(e)
@@ -270,6 +246,6 @@ function spy_stop()
 end
 
 "The Mouse"
-const mouse = Mouse(map(int, position())..., MouseState(0))
+const mouse = Mouse(0, 0, MouseState(0))
 "The Keyboard"
 const keyboard = Keyboard(Keys(0))

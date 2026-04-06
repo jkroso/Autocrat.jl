@@ -1,4 +1,4 @@
-@use ".." move hold release click windows MouseButton
+@use ".." move hold release click windows adapter focus get_tree MouseButton
 
 const canvas_html = """
 <!DOCTYPE html>
@@ -60,15 +60,25 @@ end
 
 function find_canvas()
   for w in windows()
-    occursin("Autocrat Canvas", get(w, "title", "")) && return w
+    occursin("Autocrat Canvas", w.title) && return w
   end
-  error("No canvas window found")
+  nothing
 end
 
 open_canvas()
-w = find_canvas()
-cx = w["x"] + w["width"] / 2
-cy = w["y"] + w["height"] / 2
+w = let w = nothing
+  for _ in 1:10
+    w = find_canvas()
+    w !== nothing && break
+    sleep(0.5)
+  end
+  w
+end
+w === nothing && error("No canvas window found")
+focus(adapter(), w)
+b = get_tree(adapter(), w, max_depth=1, include_bounds=true).bounds
+cx = b.x + b.width / 2
+cy = b.y + b.height / 2
 click(cx, cy)
 sleep(0.5)
 draw(cx, cy)
